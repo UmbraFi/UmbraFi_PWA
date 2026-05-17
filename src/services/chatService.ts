@@ -33,6 +33,7 @@ export async function getMessages(orderID: string, after = 0): Promise<WireMessa
   const res = await fetch(url)
   if (!res.ok) throw new Error(`getMessages failed: ${res.status}`)
   const data = await res.json()
+  if (Array.isArray(data)) return data as WireMessage[]
   return (data as { messages: WireMessage[] }).messages || []
 }
 
@@ -41,7 +42,7 @@ export async function getUnreadOrders(pubkey: string): Promise<string[]> {
   const res = await fetch(`${MINER_URL}/v1/chat/unread/${encodeURIComponent(pubkey)}`)
   if (!res.ok) throw new Error(`getUnread failed: ${res.status}`)
   const data = await res.json()
-  return (data as { order_ids: string[] }).order_ids || []
+  return (data as { order_ids?: string[]; orders?: string[] }).order_ids || (data as { orders?: string[] }).orders || []
 }
 
 type MessageHandler = (msg: WireMessage) => void

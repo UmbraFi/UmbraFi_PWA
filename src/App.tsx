@@ -4,6 +4,7 @@ import AuthGate from './components/AuthGate'
 import Layout from './components/Layout'
 import ScrollToTop from './components/ScrollToTop'
 import { APP_ROUTE_PATHS } from './navigation/paths'
+import { useStore } from './store/useStore'
 import { isStandalone } from './utils/detectStandalone'
 import InstallGuide from './pages/InstallGuide'
 
@@ -31,6 +32,8 @@ const AISupport = lazy(() => import('./pages/AISupport'))
 
 export default function App() {
   const [standalone, setStandalone] = useState(() => isStandalone())
+  const loadProducts = useStore((s) => s.loadProducts)
+  const shouldShowApp = standalone || import.meta.env.DEV
 
   useEffect(() => {
     const mq = window.matchMedia('(display-mode: standalone)')
@@ -44,7 +47,11 @@ export default function App() {
     }
   }, [])
 
-  if (!standalone) return <InstallGuide />
+  useEffect(() => {
+    if (shouldShowApp) void loadProducts()
+  }, [shouldShowApp, loadProducts])
+
+  if (!shouldShowApp) return <InstallGuide />
 
   return (
     <HashRouter>

@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { getMockProducts, type FeedType, type Product } from '../data/mockProducts'
+import { listProducts } from '../services/products'
 import { getWalletItem, setWalletItem } from '../services/storage'
 
 export type SortMode = 'Default Ranking' | 'Seller Reputation' | 'Product Quality'
@@ -30,6 +31,10 @@ interface Store {
   favorites: string[]
   browsingHistory: string[]
   sellStep: number
+  productsLoaded: boolean
+  productLoadError: string | null
+  loadProducts: () => Promise<void>
+  addProduct: (product: Product) => void
   toggleFavorite: (productId: string) => void
   addToHistory: (productId: string) => void
   setSearchQuery: (query: string) => void
@@ -84,6 +89,32 @@ export const useStore = create<Store>()(subscribeWithSelector((set, get) => ({
   browsingHistory: [] as string[],
   sellType: 'regular' as SellType,
   sellStep: 0,
+  productsLoaded: false,
+  productLoadError: null,
+
+  loadProducts: async () => {
+    try {
+      const remoteProducts = await listProducts()
+      set({
+        products: remoteProducts,
+        productsLoaded: true,
+        productLoadError: null,
+      })
+    } catch (e) {
+      set({
+        products: getMockProducts(),
+        productsLoaded: true,
+        productLoadError: (e as Error).message,
+      })
+    }
+  },
+  addProduct: (product) =>
+    set((state) => ({
+      products: [
+        product,
+        ...state.products.filter((existing) => existing.id !== product.id),
+      ],
+    })),
 
   toggleFavorite: (productId) =>
     set((state) => ({
@@ -182,11 +213,23 @@ export const useStore = create<Store>()(subscribeWithSelector((set, get) => ({
 
   refreshProducts: async () => {
     set({ isRefreshing: true })
-    await new Promise((r) => setTimeout(r, 600))
-    set((state) => {
-      const shuffled = [...state.products].sort(() => Math.random() - 0.5)
-      return { products: shuffled, isRefreshing: false }
-    })
+    try {
+      const remoteProducts = await listProducts()
+      set({
+        products: remoteProducts,
+        productLoadError: null,
+        isRefreshing: false,
+      })
+    } catch (e) {
+      set((state) => {
+        const shuffled = [...state.products].sort(() => Math.random() - 0.5)
+        return {
+          products: shuffled,
+          productLoadError: (e as Error).message,
+          isRefreshing: false,
+        }
+      })
+    }
   },
 
   getFilteredProducts: () => {

@@ -21,7 +21,9 @@ import { useOnChainProfile } from '../hooks/useOnChainProfile'
 import { useSafeBack } from '../hooks/useSafeBack'
 import { useSwipeNavigation } from '../hooks/useSwipeNavigation'
 import { APP_ROUTE_PATHS, toSellerPath } from '../navigation/paths'
+import { upsertProductThread } from '../services/chatThreads'
 import { useStore } from '../store/useStore'
+import { useWalletStore } from '../store/useWalletStore'
 import { getSellerAgentRating, type SellerAgentMetric } from '../utils/sellerAgentRating'
 
 function formatRelativeTime(value: string) {
@@ -122,6 +124,7 @@ export default function ProductDetail() {
   const favorites = useStore((state) => state.favorites)
   const toggleFavorite = useStore((state) => state.toggleFavorite)
   const addToHistory = useStore((state) => state.addToHistory)
+  const buyerPubkey = useWalletStore((state) => state.publicKey)
   const product = products.find((item) => item.id === id)
   const isFavorited = id ? favorites.includes(id) : false
   const [imageLoaded, setImageLoaded] = useState(false)
@@ -194,6 +197,19 @@ export default function ProductDetail() {
 
   const handleChatSeller = () => {
     if (!product) return
+    const sellerPubkey = product.sellerPubkey || product.seller
+
+    if (buyerPubkey && isLikelySolanaPubkey(sellerPubkey)) {
+      const thread = upsertProductThread(product, buyerPubkey)
+      navigate(`/chat/${thread.id}`, {
+        state: {
+          from: fromPath,
+          peerPubKey: thread.peerPubKey,
+          orderID: thread.orderID,
+        },
+      })
+      return
+    }
 
     navigate(APP_ROUTE_PATHS.messages, {
       state: {
@@ -503,4 +519,8 @@ export default function ProductDetail() {
       </div>
     </div>
   )
+}
+
+function isLikelySolanaPubkey(value: string): boolean {
+  return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(value)
 }

@@ -4,10 +4,12 @@ export interface Product {
   brand: string
   price: number
   image: string
+  imageCids?: string[]
   category: string
   feedType: FeedType
   description: string
   seller: string
+  sellerPubkey?: string
   listedAt: string
   size?: string
   condition: 'New' | 'Like New' | 'Used'
@@ -15,6 +17,14 @@ export interface Product {
   qualityScore: number
   shipFromCountry: string
   deliverableCountries: string[]
+  sellType?: string
+  tags?: string[]
+  review?: {
+    approved: boolean
+    reason: string
+    minerPubkey?: string
+    timestamp?: number
+  }
 }
 
 const hoursAgo = (hours: number) => new Date(Date.now() - hours * 60 * 60 * 1000).toISOString()
@@ -225,4 +235,3 @@ export function getMockProducts(): Product[] {
   })
   return _mockProducts
 }
-

@@ -29,22 +29,6 @@ function onWalletReady() {
   hydrateStoreFromWallet()
 }
 
-const SESSION_SK_KEY = 'umbra_session_sk'
-
-function persistSession(sk: Uint8Array) {
-  sessionStorage.setItem(SESSION_SK_KEY, uint8ToBase64(sk))
-}
-
-function clearSession() {
-  sessionStorage.removeItem(SESSION_SK_KEY)
-}
-
-function restoreSession(): Uint8Array | null {
-  const raw = sessionStorage.getItem(SESSION_SK_KEY)
-  if (!raw) return null
-  try { return base64ToUint8(raw) } catch { return null }
-}
-
 /** Returns the raw Ed25519 secret key (64 bytes). Throws if wallet is locked. */
 export function getSecretKey(): Uint8Array {
   if (!_secretKey) throw new Error('Wallet is locked')
@@ -75,22 +59,9 @@ interface WalletState {
   getDecryptedMnemonic: (pin: string) => Promise<string | null>
 }
 
-// Restore session on startup: if secret key is cached in sessionStorage, auto-unlock
-const _restored = (() => {
-  const sk = restoreSession()
-  if (sk && loadWalletData()) {
-    _secretKey = sk
-    return true
-  }
-  clearSession()
-  return false
-})()
-
-if (_restored) onWalletReady()
-
 export const useWalletStore = create<WalletState>((set) => ({
   publicKey: loadWalletData()?.publicKey ?? null,
-  isUnlocked: _restored,
+  isUnlocked: false,
   isLoading: false,
   error: null,
   pendingMnemonic: null,
@@ -120,7 +91,6 @@ export const useWalletStore = create<WalletState>((set) => ({
       saveWalletData(data)
 
       _secretKey = secretKey
-      persistSession(secretKey)
       set({ publicKey, isUnlocked: true, isLoading: false, pendingMnemonic: mnemonic })
       onWalletReady()
     } catch (e) {
@@ -151,7 +121,6 @@ export const useWalletStore = create<WalletState>((set) => ({
       saveWalletData(data)
 
       _secretKey = secretKey
-      persistSession(secretKey)
       set({ publicKey, isUnlocked: true, isLoading: false })
       onWalletReady()
     } catch (e) {
@@ -178,7 +147,6 @@ export const useWalletStore = create<WalletState>((set) => ({
       saveWalletData(data)
 
       _secretKey = secretKey
-      persistSession(secretKey)
       set({ publicKey, isUnlocked: true, isLoading: false })
       onWalletReady()
     } catch (e) {
@@ -202,7 +170,6 @@ export const useWalletStore = create<WalletState>((set) => ({
       )
 
       _secretKey = secretKey
-      persistSession(secretKey)
       set({ publicKey: data.publicKey, isUnlocked: true, isLoading: false })
       onWalletReady()
     } catch (e) {
@@ -215,7 +182,6 @@ export const useWalletStore = create<WalletState>((set) => ({
       _secretKey.fill(0)
       _secretKey = null
     }
-    clearSession()
     set({ isUnlocked: false })
   },
 
@@ -224,7 +190,6 @@ export const useWalletStore = create<WalletState>((set) => ({
       _secretKey.fill(0)
       _secretKey = null
     }
-    clearSession()
     clearWalletData()
     set({ publicKey: null, isUnlocked: false, error: null, pendingMnemonic: null })
   },

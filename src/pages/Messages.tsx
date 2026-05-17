@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect, useCallback } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { MessageCircle, Pencil, CheckCheck, Search, Trash2, X } from 'lucide-react'
 import { mockTransactions, statusLabel, statusColor } from '../data/mockTransactions'
+import { deleteChatThreads, listChatThreads, type ChatThread } from '../services/chatThreads'
 import { useChatStore } from '../store/useChatStore'
 import { useWalletStore } from '../store/useWalletStore'
 import { usePullToRefresh } from '../hooks/usePullToRefresh'
@@ -15,6 +16,7 @@ export default function Messages() {
   const [editMode, setEditMode] = useState(false)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [searchQuery, setSearchQuery] = useState('')
+  const [threads, setThreads] = useState<ChatThread[]>(() => listChatThreads())
   const chatIntent = useMemo(() => {
     const state = location.state as Record<string, unknown> | null
     const sellerId = typeof state?.sellerId === 'string' ? state.sellerId : ''
@@ -41,6 +43,7 @@ export default function Messages() {
 
   useEffect(() => {
     if (isUnlocked) {
+      setThreads(listChatThreads())
       fetchUnread()
       connectWebSocket()
     }
@@ -69,7 +72,8 @@ export default function Messages() {
   }
 
   const handleDelete = () => {
-    // TODO: actually delete selected transactions
+    deleteChatThreads(selected)
+    setThreads(listChatThreads())
     setSelected(new Set())
     setEditMode(false)
   }
@@ -184,7 +188,7 @@ export default function Messages() {
 
       {/* ── Message list ── */}
       <div className="pt-1 -mx-2 min-h-screen bg-white">
-        {filtered.length === 0 ? (
+        {filtered.length === 0 && threads.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-center">
             <MessageCircle size={40} strokeWidth={1} className="text-[var(--color-text-secondary)] mb-4" />
             <p className="text-sm text-[var(--color-text-secondary)]">
@@ -208,6 +212,80 @@ export default function Messages() {
                 <p className="text-xs text-[var(--color-text-secondary)] truncate mt-0.5">Order updates and announcements</p>
               </div>
             </div>
+
+            {threads.map((thread) => {
+              const isUnread = unreadOrders.has(thread.orderID)
+              return (
+                <div key={thread.id}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (editMode) {
+                        toggleSelect(thread.id)
+                      } else {
+                        navigate(`/chat/${thread.id}`, {
+                          state: {
+                            from: fromPath,
+                            peerPubKey: thread.peerPubKey,
+                            orderID: thread.orderID,
+                          },
+                        })
+                      }
+                    }}
+                    className={`tap-feedback w-full flex items-center gap-3 px-3 py-3.5 transition-colors text-left ${
+                      editMode && selected.has(thread.id) ? 'bg-[var(--color-accent-50)]' : 'hover:bg-gray-50/60'
+                    }`}
+                  >
+                    {editMode && (
+                      <div
+                        className={`w-5 h-5 rounded-full border-2 shrink-0 flex items-center justify-center transition-colors ${
+                          selected.has(thread.id)
+                            ? 'bg-[var(--color-accent)] border-[var(--color-accent)]'
+                            : 'border-gray-300'
+                        }`}
+                      >
+                        {selected.has(thread.id) && (
+                          <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
+                            <path d="M1 4L3.5 6.5L9 1" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                          </svg>
+                        )}
+                      </div>
+                    )}
+                    <div className="w-13 h-13 rounded-full overflow-hidden bg-gray-100 shrink-0 self-center">
+                      <img src={thread.productImage} alt={thread.productName} className="w-full h-full object-cover" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className={`text-sm truncate ${isUnread ? 'font-semibold' : 'font-normal text-[var(--color-text-secondary)]'}`}>
+                          {thread.productName}
+                        </span>
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-yellow-100 text-yellow-700">
+                          Pending
+                        </span>
+                      </div>
+                      <p className={`text-xs truncate mt-0.5 ${isUnread ? 'text-[var(--color-text)] font-medium' : 'text-[var(--color-text-secondary)]'}`}>
+                        {thread.lastMessage}
+                      </p>
+                    </div>
+                    <div className="shrink-0 flex flex-col items-end gap-3 self-center">
+                      <span className="text-xs text-[var(--color-text-secondary)]">
+                        {new Date(thread.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                      <div className="h-5 flex items-center justify-center">
+                        {!editMode && isUnread ? (
+                          <span className="min-w-[20px] h-5 rounded-full bg-[var(--color-accent)] flex items-center justify-center px-1">
+                            <span className="text-xs font-semibold text-[var(--color-accent-active)]">1</span>
+                          </span>
+                        ) : (
+                          <span />
+                        )}
+                      </div>
+                    </div>
+                  </button>
+                  <div className="border-b border-[var(--color-border)] ml-[4.75rem] mr-3" />
+                </div>
+              )
+            })}
 
             {filtered.map((tx, idx) => {
               const isUnread = unreadOrders.has(tx.orderId) || tx.unread

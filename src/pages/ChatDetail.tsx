@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { useParams, useLocation } from 'react-router-dom'
 import { Send, Package, Wifi, WifiOff } from 'lucide-react'
 import { mockTransactions, statusLabel, statusColor } from '../data/mockTransactions'
+import { getChatThread, updateThreadLastMessage } from '../services/chatThreads'
 import { useChatStore, type DisplayMessage } from '../store/useChatStore'
 import { useWalletStore } from '../store/useWalletStore'
 import { useSafeBack } from '../hooks/useSafeBack'
@@ -13,13 +14,14 @@ export default function ChatDetail() {
   const location = useLocation()
   const goBack = useSafeBack(APP_ROUTE_PATHS.messages)
   const tx = mockTransactions.find((t) => t.id === chatId)
+  const thread = chatId ? getChatThread(chatId) : null
   const [input, setInput] = useState('')
   const bottomRef = useRef<HTMLDivElement>(null)
 
   // Get peerPubKey from route state (passed by Messages page)
   const state = location.state as Record<string, unknown> | null
-  const peerPubKey = (typeof state?.peerPubKey === 'string' ? state.peerPubKey : '')
-  const orderID = tx?.orderId || chatId || ''
+  const peerPubKey = (typeof state?.peerPubKey === 'string' ? state.peerPubKey : '') || thread?.peerPubKey || ''
+  const orderID = (typeof state?.orderID === 'string' ? state.orderID : '') || thread?.orderID || tx?.orderId || chatId || ''
 
   const { isUnlocked } = useWalletStore()
   const { conversations, wsConnected, loading, loadMessages, sendMessage, setActiveOrder } = useChatStore()
@@ -39,7 +41,7 @@ export default function ChatDetail() {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  if (!tx) {
+  if (!tx && !thread) {
     return (
       <div className="flex items-center justify-center h-full py-20">
         <p className="text-sm text-[var(--color-text-secondary)]">Conversation not found</p>
@@ -53,10 +55,31 @@ export default function ChatDetail() {
     setInput('')
     try {
       await sendMessage(orderID, peerPubKey, trimmed)
+      if (thread) updateThreadLastMessage(thread.id, trimmed)
     } catch (e) {
       console.error('[chat] send error:', e)
     }
   }
+
+  const context = tx
+    ? {
+        image: tx.product.image,
+        name: tx.product.name,
+        price: tx.product.price,
+        status: tx.status,
+        orderId: tx.orderId,
+        role: tx.role,
+        counterparty: tx.counterparty,
+      }
+    : {
+        image: thread!.productImage,
+        name: thread!.productName,
+        price: thread!.productPrice,
+        status: 'pending' as const,
+        orderId: thread!.orderID,
+        role: thread!.role,
+        counterparty: thread!.counterparty,
+      }
 
   return (
     <div className="flex flex-col h-full max-w-2xl mx-auto" data-allow-horizontal-swipe="true">
@@ -67,8 +90,8 @@ export default function ChatDetail() {
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-lg overflow-hidden bg-gray-100 shrink-0">
             <img
-              src={tx.product.image}
-              alt={tx.product.name}
+              src={context.image}
+              alt={context.name}
               className="w-full h-full object-cover"
             />
           </div>
@@ -76,17 +99,17 @@ export default function ChatDetail() {
             <div className="flex items-center gap-1.5">
               <Package size={12} className="text-[var(--color-text-secondary)] shrink-0" />
               <span className="text-[11px] font-mono-accent text-[var(--color-text-secondary)]">
-                {tx.orderId}
+                {context.orderId}
               </span>
-              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${statusColor[tx.status]}`}>
-                {statusLabel[tx.status]}
+              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${statusColor[context.status]}`}>
+                {statusLabel[context.status]}
               </span>
             </div>
             <p className="text-sm font-medium truncate mt-0.5">
-              {tx.product.name} · {tx.product.price}
+              {context.name} | {context.price}
             </p>
             <p className="text-[11px] text-[var(--color-text-secondary)]">
-              {tx.role === 'buyer' ? 'Seller' : 'Buyer'}: {tx.counterparty}
+              {context.role === 'buyer' ? 'Seller' : 'Buyer'}: {context.counterparty}
             </p>
           </div>
           {/* Connection indicator */}

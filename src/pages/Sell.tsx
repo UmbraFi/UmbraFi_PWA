@@ -1,11 +1,15 @@
 import { useEffect, useState, useRef, useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Camera, X, Package, Truck, Sparkles, Plus, Bot, Check, Globe, Home, Zap, DollarSign, ChevronDown, Search, Archive, Clock, Gavel, Ticket } from 'lucide-react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { uploadImages } from '../services/ipfs'
+import { createProduct, ProductSubmissionError } from '../services/products'
 import { REGIONS } from '../data/regions'
-import { useStore } from '../store/useStore'
+import { useStore, type SellType } from '../store/useStore'
+import { useWalletStore } from '../store/useWalletStore'
 import { addDraft, readDrafts } from './Drafts'
 import { getWalletItem, setWalletItem, removeWalletItem } from '../services/storage'
+import { toProductPath } from '../navigation/paths'
 
 
 type ShippingMethod = 'standard' | 'express' | 'pickup'
@@ -98,10 +102,12 @@ const SHIPPING_METHODS: { value: ShippingMethod; label: string; icon: typeof Tru
 ]
 
 export default function Sell() {
+  const navigate = useNavigate()
   const [form, setForm] = useState<SellForm>(() => readSellDraft())
   const [photos, setPhotos] = useState<string[]>([])
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
+  const [submitError, setSubmitError] = useState<string | null>(null)
   const [draftSaved, setDraftSaved] = useState(false)
   const [excludePanelOpen, setExcludePanelOpen] = useState(false)
   const [countrySearch, setCountrySearch] = useState('')
@@ -110,6 +116,8 @@ export default function Sell() {
   const sellType = useStore((s) => s.sellType)
   const setSellType = useStore((s) => s.setSellType)
   const setSellStep = useStore((s) => s.setSellStep)
+  const addProduct = useStore((s) => s.addProduct)
+  const publicKey = useWalletStore((s) => s.publicKey)
 
   const regionConfig = form.shippingRegionConfig
 
@@ -248,13 +256,30 @@ export default function Sell() {
     e.preventDefault()
     if (!canSubmit) return
     setSubmitting(true)
+    setSubmitError(null)
     try {
       const productId = crypto.randomUUID()
-      await uploadImages(productId, photos)
-      setSubmitted(true)
+      const cids = await uploadImages(productId, photos)
+      const product = await createProduct({
+        description: form.description,
+        price: getSubmissionPrice(form, sellType),
+        sellType,
+        shippingMethod: form.shippingMethod,
+        shippingRegionConfig: form.shippingRegionConfig,
+        imageCids: cids,
+        sellerPubkey: publicKey || '',
+      })
+      addProduct(product)
       try { removeWalletItem(SELL_DRAFT_KEY) } catch { /* ignore */ }
+      setSubmitted(true)
+      navigate(toProductPath(product.id), { state: { from: '/sell' }, replace: true })
     } catch (err) {
       console.error('Upload failed:', err)
+      setSubmitError(
+        err instanceof ProductSubmissionError
+          ? err.message
+          : (err as Error).message || 'Unable to publish listing',
+      )
     } finally {
       setSubmitting(false)
     }
@@ -815,7 +840,18 @@ export default function Sell() {
               : 'Set a price to continue'}
           </p>
         )}
+
+        {submitError && (
+          <p className="text-[11px] text-center text-red-500 leading-relaxed">
+            {submitError}
+          </p>
+        )}
       </form>
     </div>
   )
+}
+
+function getSubmissionPrice(form: SellForm, sellType: SellType): string {
+  if (sellType === 'auction') return form.startingBid
+  return form.price
 }
